@@ -71,6 +71,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 for epoch in range(1):
     for batch_idx, (data, target) in enumerate(a9a_loader):
         data, target = data.to(device), target.to(device)
+        model.to(device)
         print(hessian(loss_fun, (data, target)))
         break
 

@@ -50,7 +50,7 @@ def hessian_by_hand(loader, model, LAMBDA):
 from torch.autograd.functional import hessian
 
 
-a9a = A9ADataset('./data/LibSVM/a9a/a9a')
+a9a = A9ADataset('/kaggle/input/a9a-ahmed/a9a')
 a9a_loader = DataLoader(a9a, batch_size=1000, shuffle=True)
 model = LogisticRegression(123, 1)
 criterion = nn.BCELoss()

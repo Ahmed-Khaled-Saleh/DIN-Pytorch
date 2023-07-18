@@ -56,7 +56,7 @@ model = LogisticRegression(123, 1)
 criterion = nn.BCELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
-def loss_fun(input_tensor):
+def loss_fun(input_tensor, target_tensor):
     
     model.train()  # Set the model to training mode
 
@@ -65,11 +65,13 @@ def loss_fun(input_tensor):
     loss = criterion(output, target.to(torch.float32))
     return loss
     
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 #import pdb; pdb.set_trace()
 for epoch in range(1):
     for batch_idx, (data, target) in enumerate(a9a_loader):
-        print(hessian(loss_fun, data))
+        data, target = data.to(device), target.to(device)
+        print(hessian(loss_fun, (data, target)))
         break
 
 

@@ -1,106 +1,94 @@
-from data import A9ADataset
-from model import LogisticRegression
-from utils import split_data, standard_newton, DIN, loss_function
+
 import torch
-from torch.utils.data import DataLoader
-from  topolgy import Topolgy
-import numpy as np
-import matplotlib.pyplot as plt
-import networkx as nx
-from tqdm import tqdm
 import log
-import random
+from tqdm import tqdm
 
-random.seed(42)
-np.random.seed(42)
-torch.manual_seed(42)
+def gradient_by_hand(loader, model, criterion, LAMBDA):
+    grad = []
+    for i, (data, target) in enumerate(loader):
+        y_hat = model(data)
+        target[target == -1] = 0
+        loss = criterion(y_hat, target.to(torch.float32))
+        loss.backward()
+        g = model.linear.weight.grad + LAMBDA * model.linear.weight.data
+        grad.append(g)
+    return torch.stack(grad, dim=0).mean(dim=0)
 
+def hessian_by_hand(loader, model, LAMBDA):
+    hessian = []
+    for i, (data, target) in enumerate(loader):
+        y_hat = model(data)
+        S = torch.diag(y_hat * (1-y_hat))
+        h = torch.matmul(torch.matmul(data.T, S), data) + LAMBDA * torch.eye(data.shape[1])
+        hessian.append(h)
+    return torch.stack(hessian, dim=0).mean(dim=0)
 
-k = 200
-n_clients = 80
-rho = 0.1
-LAMBDA = 1e-3
+def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
 
-criterion = torch.nn.BCELoss()
+    log.info("Running standard newton method")
+    for i in tqdm(range(n_epochs)):
+        g = gradient_by_hand(loader, model, criterion, LAMBDA)
+        h = hessian_by_hand(loader, model, LAMBDA)
 
-# set up the topology
-topology = Topolgy()
-topology.generate_graph(params = 0.2)
-neighbour_set =  nx.adjacency_matrix(topology.G).toarray()
-neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
-nodes_degrees = torch.sum(neighbour_set, axis=1)
+        # upadte weights
+        model.linear.weight.data -= torch.matmul(torch.inverse(h), torch.squeeze(g))
+        # check for convergence
+        if torch.norm(g) < 1e-3:
+            log.info("Converged because gradient norm is less than {}".format(eps))
+            return model
+    return model
 
-model = LogisticRegression(123, 1)
-clients_models = [model for _ in range(k)]
-clients_prev_model = [model for _ in range(k)]
-
-d = torch.randn_like(model.linear.weight.data)
-clients_d = [d for _ in range(k)]
-prev_d = torch.randn_like(model.linear.weight.data)
-clients_prev_d = [prev_d for _ in range(k)]
-
-dual = torch.randn_like(model.linear.weight.data)
-clients_dual = [dual for _ in range(k)]
-
-dataset = A9ADataset('data/LibSVM/a9a/a9a')
-loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
-
-best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
-f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
-log.info("The value of the loss function is {}".format(f_min))
-
-<<<<<<< HEAD
-for i in tqdm(range(5)):
-=======
-for i in tqdm(range(k)):
->>>>>>> 5195b1877f3cefd78256837975c2a6816387e10d
-    index_gen = split_data(dataset, n_clients)
-    all_ds = []
-    all_prev_ds = []
-    for j in range(n_clients):
-        ds = torch.sum(clients_d[j], axis= 0)
-        prev_ds = torch.sum(clients_prev_d[j], axis= 0)
-        all_ds.append(ds)
-        all_prev_ds.append(prev_ds)
-        
-    temp = [0 for _ in range(k)]
-    temp_model = [0 for _ in range(k)]
-    for j in range(n_clients):
-        client_dataset = index_gen.__next__()
-        client_loader = DataLoader(client_dataset, batch_size=32, shuffle=True)
-        # current and previous client's neighbours's duals and d's summation
-        m, lambda_, direction = DIN(loaded_data,
-                                    clients_prev_model[j],
-                                    clients_models[j],
-                                    clients_dual[j],
-                                    clients_d[j],
-                                    clients_prev_d[j],
-                                    all_prev_ds[j],
-                                    all_ds[j],
-                                    nodes_degrees[j],
-                                    criterion,
-                                    LAMBDA,
-                                    rho)
-
-        temp[j] = direction
-        temp_model[j] = m
-        clients_dual[j] = lambda_
-
-    clients_prev_d = clients_d
-    clients_d = temp
-
-    clients_prev_model = clients_models
-    clients_models = temp_model
+# the value of the loss function
+def loss_function(model, loader, criterion, LAMBDA):
+    loss = 0
+    for i, (data, target) in enumerate(loader):
+        y_hat = model(data)
+        target[target == -1] = 0
+        loss = criterion(y_hat, target.to(torch.float32))
+        loss += LAMBDA * torch.norm(model.linear.weight.data)
+    return loss
 
 
-    # compute the optimality gap and append to the list
-    # gaps = []
-    # optimality_gap = torch.norm((clients_models[i].linear.weight.data).mean() - best_model.linear.weight.data)
-    # gaps.append(optimality_gap)
-    # log.info("optimality gap is {}".format(optimality_gap))
+def split_data(data, n_clients):
+    '''
+    split the data between 80 clients as follows:
+    every client has 407 instances from a total of 32561
+    '''
+    n_instances = len(data)
+    n_instances_per_client = n_instances // n_clients
+    for i in range(n_clients):
+        if i == 0:
+            index = n_instances_per_client
+            yield data[:index]
+        else:
+            index = (i+1) * n_instances_per_client
+            yield data[i*n_instances_per_client:index]
 
-# plot the optimality gap
-# plt.plot(gaps)
-# plt.xlabel('iteration')
-# plt.ylabel('optimality gap')
-# plt.show()
+
+def DIN(client_loader,
+        prev_client_model,
+        cur_client_model,
+        dual,
+        client_d,
+        client_prev_d,
+        prev_ds,
+        cur_ds,
+        degree,
+        criterion, 
+        LAMBDA, 
+        rho,
+        ):
+
+
+    g = gradient_by_hand(client_loader, cur_client_model, criterion, LAMBDA)
+    h = hessian_by_hand(client_loader, cur_client_model, LAMBDA)
+
+    h_alpha = h + 2 * rho* degree * torch.eye(cur_client_model.linear.weight.data.shape[0])
+    h_alpha_inv = torch.inverse(h_alpha)
+
+    client_d = (h_alpha_inv @ (g - dual + (rho * client_prev_d + prev_ds)).T).T
+    dual = dual + rho * (degree * client_d - cur_ds)
+    cur_client_model.linear.weight.data = prev_client_model.linear.weight.data - client_d
+
+    return cur_client_model, dual, client_d
+

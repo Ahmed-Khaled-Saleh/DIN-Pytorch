@@ -1,57 +1,102 @@
-
-
+from data import A9ADataset
+from model import LogisticRegression
+from utils import split_data, standard_newton, DIN, loss_function
+import torch
+from torch.utils.data import DataLoader
+from  topolgy import Topolgy
 import numpy as np
-np.random.seed(42)
 import matplotlib.pyplot as plt
+import networkx as nx
+from tqdm import tqdm
+import log
+import random
 
-from src.problems import LogisticRegression
-from src.optimizers import *
-from src.optimizers.utils import generate_mixing_matrix
-
-from src.experiment_utils import run_exp
-
-
-
-if __name__ == '__main__':
-    n_agent = 80
-    m = 407
-    dim = 123    
-
-    kappa = 100
-    mu = 5e-8
-
-    n_iters = 10
-
-    p = LogisticRegression(n_agent=n_agent, m=m, dim=dim, noise_ratio=0.05, graph_type='binomial', kappa=kappa, graph_params=0.4, dataset="a9a", gpu=False, regularization= 'l2', LAMBDA=1e-3)
-    print(p.n_edges)
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
 
 
-    x_0 = np.random.rand(dim, n_agent)
-    x_0_mean = x_0.mean(axis=1)
+k = 200
+n_clients = 80
+rho = 0.1
+LAMBDA = 1e-3
 
-    W, alpha = generate_mixing_matrix(p) # returns the FDLA mixing matrix(Symmetric fastest distributed linear averaging).
-    print('alpha = ' + str(alpha))
-    
+criterion = torch.nn.BCELoss()
 
-    eta = 2/(p.L + p.sigma)
-    eta_2 = 2 / (p.L + p.sigma)
-    eta_1 = 1 / p.L
-    n_inner_iters = int(m * 0.05)
-    batch_size = int(m / 10)
-    batch_size = 10
-    n_iters = 200
-    n_inner_iters = 100
+# set up the topology
+topology = Topolgy()
+topology.generate_graph(params = 0.2)
+neighbour_set =  nx.adjacency_matrix(topology.G).toarray()
+neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
+nodes_degrees = torch.sum(neighbour_set, axis=1)
 
-    n_dgd_iters = n_iters * 20
+model = LogisticRegression(123, 1)
+clients_models = [model for _ in range(k)]
+clients_prev_model = [model for _ in range(k)]
+
+d = torch.randn_like(model.linear.weight.data)
+clients_d = [d for _ in range(k)]
+prev_d = torch.randn_like(model.linear.weight.data)
+clients_prev_d = [prev_d for _ in range(k)]
+
+dual = torch.randn_like(model.linear.weight.data)
+clients_dual = [dual for _ in range(k)]
+
+dataset = A9ADataset('data/LibSVM/a9a/a9a')
+loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
+
+best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
+f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
+log.info("The value of the loss function is {}".format(f_min))
+
+for i in tqdm(range(5)):
+    index_gen = split_data(dataset, n_clients)
+    all_ds = []
+    all_prev_ds = []
+    for j in range(n_clients):
+        ds = torch.sum(clients_d[j], axis= 0)
+        prev_ds = torch.sum(clients_prev_d[j], axis= 0)
+        all_ds.append(ds)
+        all_prev_ds.append(prev_ds)
+        
+    temp = [0 for _ in range(k)]
+    temp_model = [0 for _ in range(k)]
+    for j in range(n_clients):
+        client_dataset = index_gen.__next__()
+        client_loader = DataLoader(client_dataset, batch_size=32, shuffle=True)
+        # current and previous client's neighbours's duals and d's summation
+        m, lambda_, direction = DIN(loaded_data,
+                                    clients_prev_model[j],
+                                    clients_models[j],
+                                    clients_dual[j],
+                                    clients_d[j],
+                                    clients_prev_d[j],
+                                    all_prev_ds[j],
+                                    all_ds[j],
+                                    nodes_degrees[j],
+                                    criterion,
+                                    LAMBDA,
+                                    rho)
+
+        temp[j] = direction
+        temp_model[j] = m
+        clients_dual[j] = lambda_
+
+    clients_prev_d = clients_d
+    clients_d = temp
+
+    clients_prev_model = clients_models
+    clients_models = temp_model
 
 
-    exps = [
-        DGD(p, n_iters=n_iters, eta=eta/10, x_0=x_0, W=W),
-        DINSerial(p, n_iters=n_iters, x_0=x_0, W=W),
-        DINParallel(p, n_iters=n_iters, x_0=x_0, W=W),
-        ]
+    # compute the optimality gap and append to the list
+    # gaps = []
+    # optimality_gap = torch.norm((clients_models[i].linear.weight.data).mean() - best_model.linear.weight.data)
+    # gaps.append(optimality_gap)
+    # log.info("optimality gap is {}".format(optimality_gap))
 
-    res = run_exp(exps, name='logistic_regression', n_cpu_processes=4, save=True, plot= True)
-
-    
-    plt.show()
+# plot the optimality gap
+# plt.plot(gaps)
+# plt.xlabel('iteration')
+# plt.ylabel('optimality gap')
+# plt.show()

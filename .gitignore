@@ -1,14 +1,11 @@
 __pycache__
 figs
-data
 build
 *npz
 *pt
 *egg-info
-*data
 .DS_Store
 *egg-info
-./data/*
 ./notebooks/*
 ./models/*
 ./reports/*

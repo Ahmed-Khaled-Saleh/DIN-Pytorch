@@ -2,16 +2,10 @@
 
 
 
-from torch.utils.data import Dataset, DataLoader
-
+from torch.utils.data import Dataset
 
 import torch
 from torch.utils.data import Dataset
-import numpy as np
-
-import torch
-from torch.utils.data import Dataset
-import numpy as np
 
 class A9ADataset(Dataset):
     def __init__(self, file_path):
@@ -26,12 +20,12 @@ class A9ADataset(Dataset):
     def _load_data(self, file_path):
         data = []
         labels = []
-        with open(file_path, 'r') as f:
-            for line in f:
-                line = line.strip().split(' ')
-                labels.append(int(line[0]))
+        with open(file_path, 'r+') as f:
+            for line in f: 
+                l = line.strip().split(' ')
+                labels.append(int(l[0]))
                 feature_vector = [0] * 123  # Assuming the data has 123 features
-                for item in line[1:]:
+                for item in l[1:]:
                     if ':' in item:
                         feature_index, feature_value = item.split(':')
                         feature_vector[int(feature_index)-1] = float(feature_value)

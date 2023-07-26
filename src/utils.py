@@ -49,7 +49,7 @@ best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
 f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
 log.info("The value of the loss function is {}".format(f_min))
 
-for i in tqdm(range(5)):
+for i in tqdm(range(k)):
     index_gen = split_data(dataset, n_clients)
     all_ds = []
     all_prev_ds = []

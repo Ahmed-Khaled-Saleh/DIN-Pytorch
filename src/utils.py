@@ -1,79 +1,102 @@
-
-import torch
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import torch.nn as nn
 from data import A9ADataset
 from model import LogisticRegression
+from utils import split_data, standard_newton, DIN, loss_function
+import torch
+from torch.utils.data import DataLoader
+from  topolgy import Topolgy
+import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+from tqdm import tqdm
+import log
+import random
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
 
 
+k = 200
+n_clients = 80
+rho = 0.1
+LAMBDA = 1e-3
 
-def enable_requires_grad(model, requires_grad=True):
-    for param in model.parameters():
-        param.requires_grad_(requires_grad)
+criterion = torch.nn.BCELoss()
 
+# set up the topology
+topology = Topolgy()
+topology.generate_graph(params = 0.2)
+neighbour_set =  nx.adjacency_matrix(topology.G).toarray()
+neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
+nodes_degrees = torch.sum(neighbour_set, axis=1)
 
-# def hessian(data_loader, model, criterion):
-#     """
-#     Compute the Hessian of the loss w.r.t. the model parameters per sample.
-#     """
-#     model.train()  # Set the model to training mode
-
-#     enable_requires_grad(model, requires_grad=True)  # Enable requires_grad for model parameters
-
-#     hessian = []
-#     for data, target in data_loader:
-#         output = model(data)
-#         loss = criterion(output, target.to(torch.float32))
-#         grad1 = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=True, retain_graph=True)
-#         param_hessian = []
-#         for i in range(len(grad1)):
-#             grad2 = torch.autograd.grad(outputs=grad1[i], inputs=model.parameters(), retain_graph=True)
-#             param_hessian.append(torch.cat([grad.flatten() for grad in grad2]))
-#         hessian.append(torch.stack(param_hessian))
-#     hessian = torch.stack(hessian)
-
-#     return hessian
-
-def hessian_by_hand(loader, model, LAMBDA):
-
-    hessian = []
-    for batch_idx, (data, target) in enumerate(loader):
-        import pdb; pdb.set_trace()
-        y_hat = model(data)
-        S = torch.diag(y_hat * (1-y_hat))
-        h = torch.matmul(torch.matmul(data.T, S), data) + LAMBDA * torch.eye(data.shape[1])
-        hessian.append(torch.stack(h))
-    return torch.stack(hessian)
-
-
-from torch.autograd.functional import hessian
-
-
-a9a = A9ADataset('/kaggle/input/a9a-ahmed/a9a')
-a9a_loader = DataLoader(a9a, batch_size=1000, shuffle=True)
 model = LogisticRegression(123, 1)
-criterion = nn.BCELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+clients_models = [model for _ in range(k)]
+clients_prev_model = [model for _ in range(k)]
 
-def loss_fun(input_tensor, target_tensor):
-    
-    model.train()  # Set the model to training mode
+d = torch.randn_like(model.linear.weight.data)
+clients_d = [d for _ in range(k)]
+prev_d = torch.randn_like(model.linear.weight.data)
+clients_prev_d = [prev_d for _ in range(k)]
 
-    enable_requires_grad(model, requires_grad=True)  # Enable requires_grad for model parameters
-    output = model(input_tensor)
-    loss = criterion(output, target.to(torch.float32))
-    return loss
-    
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+dual = torch.randn_like(model.linear.weight.data)
+clients_dual = [dual for _ in range(k)]
 
-#import pdb; pdb.set_trace()
-for epoch in range(1):
-    for batch_idx, (data, target) in enumerate(a9a_loader):
-        data, target = data.to(device), target.to(device)
-        model.to(device)
-        print(hessian(loss_fun, (data, target)))
-        break
+dataset = A9ADataset('data/LibSVM/a9a/a9a')
+loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
+
+best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
+f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
+log.info("The value of the loss function is {}".format(f_min))
+
+for i in tqdm(range(5)):
+    index_gen = split_data(dataset, n_clients)
+    all_ds = []
+    all_prev_ds = []
+    for j in range(n_clients):
+        ds = torch.sum(clients_d[j], axis= 0)
+        prev_ds = torch.sum(clients_prev_d[j], axis= 0)
+        all_ds.append(ds)
+        all_prev_ds.append(prev_ds)
+        
+    temp = [0 for _ in range(k)]
+    temp_model = [0 for _ in range(k)]
+    for j in range(n_clients):
+        client_dataset = index_gen.__next__()
+        client_loader = DataLoader(client_dataset, batch_size=32, shuffle=True)
+        # current and previous client's neighbours's duals and d's summation
+        m, lambda_, direction = DIN(loaded_data,
+                                    clients_prev_model[j],
+                                    clients_models[j],
+                                    clients_dual[j],
+                                    clients_d[j],
+                                    clients_prev_d[j],
+                                    all_prev_ds[j],
+                                    all_ds[j],
+                                    nodes_degrees[j],
+                                    criterion,
+                                    LAMBDA,
+                                    rho)
+
+        temp[j] = direction
+        temp_model[j] = m
+        clients_dual[j] = lambda_
+
+    clients_prev_d = clients_d
+    clients_d = temp
+
+    clients_prev_model = clients_models
+    clients_models = temp_model
 
 
+    # compute the optimality gap and append to the list
+    # gaps = []
+    # optimality_gap = torch.norm((clients_models[i].linear.weight.data).mean() - best_model.linear.weight.data)
+    # gaps.append(optimality_gap)
+    # log.info("optimality gap is {}".format(optimality_gap))
 
+# plot the optimality gap
+# plt.plot(gaps)
+# plt.xlabel('iteration')
+# plt.ylabel('optimality gap')
+# plt.show()

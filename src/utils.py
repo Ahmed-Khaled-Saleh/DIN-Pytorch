@@ -88,10 +88,10 @@ def DIN(client_loader,
     g = gradient_by_hand(client_loader, cur_client_model, criterion, LAMBDA)
     h = hessian_by_hand(client_loader, cur_client_model, LAMBDA)
 
-    h_alpha = h + 2 * rho* degree * torch.eye(cur_client_model.linear.weight.data.shape[0])
+    h_alpha = h + (2 * rho* degree) * torch.eye(cur_client_model.linear.weight.data.shape[0])
     h_alpha_inv = torch.inverse(h_alpha)
 
-    client_d = (h_alpha_inv @ (g - dual + (rho * client_prev_d + prev_ds)).T).T
+    client_d = (h_alpha_inv @ (g - dual + (rho * (degree * client_prev_d) + prev_ds)).T).T
     dual = dual + rho * (degree * client_d - cur_ds)
     cur_client_model.linear.weight.data = prev_client_model.linear.weight.data - client_d
 

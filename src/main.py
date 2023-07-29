@@ -53,10 +53,10 @@ loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
 
 best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
 f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
-log.info("The value of the loss function is {}".format(f_min))
+log.info("The minimum value of the loss function is {}".format(f_min))
 
 for i in tqdm(range(k)):
-    # index_gen = split_data(dataset, n_clients)
+
     all_ds = []
     all_prev_ds = []
     for j in range(n_clients):
@@ -101,7 +101,7 @@ for i in tqdm(range(k)):
     # import pdb; pdb.set_trace()
     gaps = []
 
-    avg_wights = torch.stack([item.linear.weight.data for item in clients_models if item != 0]).mean(axis=0)
+    avg_wights = torch.stack([item.linear.weight.data for item in clients_models]).mean(axis=0)
     avg_models = LogisticRegression(123, 1)
     avg_models.linear.weight.data = avg_wights
 

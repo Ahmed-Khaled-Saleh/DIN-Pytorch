@@ -10,7 +10,7 @@ import networkx as nx
 from tqdm import tqdm
 import log
 import random
-
+from copy import deepcopy
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
@@ -31,16 +31,17 @@ neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
 nodes_degrees = torch.sum(neighbour_set, axis=1)
 
 model = LogisticRegression(123, 1)
-clients_models = [model for _ in range(k)]
-clients_prev_model = [model for _ in range(k)]
+clients_models = [deepcopy(model) for _ in range(k)]
+clients_prev_model = [deepcopy(model) for _ in range(k)]
 
 d = torch.randn_like(model.linear.weight.data)
-clients_d = [d for _ in range(k)]
+clients_d = [deepcopy(d) for _ in range(k)]
+
 prev_d = torch.randn_like(model.linear.weight.data)
-clients_prev_d = [prev_d for _ in range(k)]
+clients_prev_d = [deepcopy(prev_d) for _ in range(k)]
 
 dual = torch.randn_like(model.linear.weight.data)
-clients_dual = [dual for _ in range(k)]
+clients_dual = [deepcopy(dual) for _ in range(k)]
 
 dataset = A9ADataset('data/LibSVM/a9a/a9a')
 loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
@@ -61,6 +62,7 @@ for i in tqdm(range(5)):
         
     temp = [0 for _ in range(k)]
     temp_model = [0 for _ in range(k)]
+    
     for j in range(n_clients):
         client_dataset = index_gen.__next__()
         client_loader = DataLoader(client_dataset, batch_size=32, shuffle=True)

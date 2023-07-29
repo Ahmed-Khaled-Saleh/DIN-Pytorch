@@ -98,7 +98,7 @@ for i in tqdm(range(k)):
     clients_models = temp_model
 
     # compute the optimality gap and append to the list
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     gaps = []
 
     avg_wights = torch.stack([item.linear.weight.data for item in clients_models if item != 0]).mean(axis=0)

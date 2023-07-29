@@ -1,6 +1,11 @@
 from data import A9ADataset
 from model import LogisticRegression
-from utils import split_data, standard_newton, DIN, loss_function
+from utils import (split_data, 
+                   standard_newton, 
+                   DIN, 
+                   loss_function, 
+                   collate_fn)
+
 import torch
 from torch.utils.data import DataLoader
 from  topolgy import Topolgy
@@ -50,8 +55,8 @@ best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
 f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
 log.info("The value of the loss function is {}".format(f_min))
 
-for i in tqdm(range(5)):
-    index_gen = split_data(dataset, n_clients)
+for i in tqdm(range(k)):
+    # index_gen = split_data(dataset, n_clients)
     all_ds = []
     all_prev_ds = []
     for j in range(n_clients):
@@ -60,13 +65,15 @@ for i in tqdm(range(5)):
         all_ds.append(ds)
         all_prev_ds.append(prev_ds)
         
-    temp = [0 for _ in range(k)]
-    temp_model = [0 for _ in range(k)]
-    
+    temp = [0] * n_clients
+    temp_model = [0] * n_clients
+
     for j in range(n_clients):
-        client_dataset = index_gen.__next__()
-        client_loader = DataLoader(client_dataset, batch_size=32, shuffle=True)
-        # current and previous client's neighbours's duals and d's summation
+
+        start, end = split_data(dataset, n_clients, j)
+        # import pdb; pdb.set_trace()
+        #client_loader = DataLoader(dataset[start:end], batch_size=32, collate_fn=collate_fn, shuffle=True, drop_last=True)
+
         m, lambda_, direction = DIN(loaded_data,
                                     clients_prev_model[j],
                                     clients_models[j],
@@ -90,15 +97,23 @@ for i in tqdm(range(5)):
     clients_prev_model = clients_models
     clients_models = temp_model
 
-
     # compute the optimality gap and append to the list
-    # gaps = []
-    # optimality_gap = torch.norm((clients_models[i].linear.weight.data).mean() - best_model.linear.weight.data)
-    # gaps.append(optimality_gap)
-    # log.info("optimality gap is {}".format(optimality_gap))
+    import pdb; pdb.set_trace()
+    gaps = []
 
-# plot the optimality gap
-# plt.plot(gaps)
-# plt.xlabel('iteration')
-# plt.ylabel('optimality gap')
-# plt.show()
+    avg_wights = torch.stack([item.linear.weight.data for item in clients_models if item != 0]).mean(axis=0)
+    avg_models = LogisticRegression(123, 1)
+    avg_models.linear.weight.data = avg_wights
+
+    f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3)
+    optimality_gap =  f_avg - f_min
+    gaps.append(optimality_gap.item())
+    log.info("optimality gap is {}".format(optimality_gap))
+
+# plot the optimality gap vs iteration
+plt.plot(gaps)
+plt.xlabel('Communication round')
+plt.ylabel('optimality gap')
+plt.show()
+
+

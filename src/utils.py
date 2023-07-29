@@ -49,21 +49,26 @@ def loss_function(model, loader, criterion, LAMBDA):
     return loss
 
 
-def split_data(data, n_clients):
+def split_data(data, n_clients, client_index):
     '''
     split the data between 80 clients as follows:
     every client has 407 instances from a total of 32561
     '''
     n_instances = len(data)
     n_instances_per_client = n_instances // n_clients
-    for i in range(n_clients):
-        if i == 0:
-            index = n_instances_per_client
-            yield data[:index]
-        else:
-            index = (i+1) * n_instances_per_client
-            yield data[i*n_instances_per_client:index]
+    if client_index == n_clients - 1:
+        return data[client_index * n_instances_per_client:]
+    return client_index * n_instances_per_client, (client_index + 1) * n_instances_per_client
 
+
+def collate_fn(data):
+    '''
+    collate function for the dataloader
+    '''
+    features, labels = zip(*data)
+    batch_features = torch.stack(features)
+    batch_labels = torch.stack(labels)
+    return batch_features, batch_labels
 
 def DIN(client_loader,
         prev_client_model,

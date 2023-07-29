@@ -50,8 +50,8 @@ clients_dual = [deepcopy(dual) for _ in range(k)]
 
 dataset = A9ADataset('data/LibSVM/a9a/a9a')
 loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
-
-best_model = standard_newton(1, loaded_data, model, criterion, 0.1, 1e-3)
+import pdb; pdb.set_trace()
+best_model = standard_newton(1, loaded_data, model, criterion, 1e-3, 1e-3)
 f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
 log.info("The minimum value of the loss function is {}".format(f_min))
 

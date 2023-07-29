@@ -4,24 +4,26 @@ import log
 from tqdm import tqdm
 
 def gradient_by_hand(loader, model, criterion, LAMBDA):
-    grad = []
+    total_grad = torch.zeros_like(model.linear.weight)
     for i, (data, target) in enumerate(loader):
         y_hat = model(data)
         target[target == -1] = 0
         loss = criterion(y_hat, target.to(torch.float32))
         loss.backward()
-        g = model.linear.weight.grad + LAMBDA * model.linear.weight.data
-        grad.append(g)
-    return torch.stack(grad, dim=0).mean(dim=0)
+        total_grad += model.linear.weight.grad
+        model.zero_grad()
+    total_grad +=  2 * LAMBDA * model.linear.weight
+    return total_grad
 
 def hessian_by_hand(loader, model, LAMBDA):
-    hessian = []
+    hessian = torch.zeros((model.linear.weight.data.shape[1], model.linear.weight.data.shape[1]))
     for i, (data, target) in enumerate(loader):
         y_hat = model(data)
         S = torch.diag(y_hat * (1-y_hat))
-        h = torch.matmul(torch.matmul(data.T, S), data) + LAMBDA * torch.eye(data.shape[1])
-        hessian.append(h)
-    return torch.stack(hessian, dim=0).mean(dim=0)
+        h = torch.matmul(torch.matmul(data.T, S), data)
+        hessian += h
+    hessian += 2 * LAMBDA * torch.eye(model.linear.weight.data.shape[1])  # Squared L2 regularization term
+    return hessian
 
 def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
 
@@ -33,21 +35,21 @@ def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
         # upadte weights
         model.linear.weight.data -= torch.matmul(torch.inverse(h), torch.squeeze(g))
         # check for convergence
-        if torch.norm(g) < 1e-3:
+        if torch.norm(g) < eps:
             log.info("Converged because gradient norm is less than {}".format(eps))
             return model
     return model
 
 # the value of the loss function
 def loss_function(model, loader, criterion, LAMBDA):
-    loss = 0
+    total_loss = 0
     for i, (data, target) in enumerate(loader):
         y_hat = model(data)
         target[target == -1] = 0
         loss = criterion(y_hat, target.to(torch.float32))
-        loss += LAMBDA * torch.norm(model.linear.weight.data)
-    return loss
-
+        total_loss += loss
+    total_loss += LAMBDA * torch.norm(model.linear.weight.data) ** 2
+    return total_loss
 
 def split_data(data, n_clients, client_index):
     '''
@@ -59,7 +61,6 @@ def split_data(data, n_clients, client_index):
     if client_index == n_clients - 1:
         return data[client_index * n_instances_per_client:]
     return client_index * n_instances_per_client, (client_index + 1) * n_instances_per_client
-
 
 def collate_fn(data):
     '''
@@ -83,7 +84,6 @@ def DIN(client_loader,
         LAMBDA, 
         rho,
         ):
-
 
     g = gradient_by_hand(client_loader, cur_client_model, criterion, LAMBDA)
     h = hessian_by_hand(client_loader, cur_client_model, LAMBDA)

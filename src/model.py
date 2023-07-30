@@ -9,5 +9,5 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_size, num_classes, bias= False)
 
     def forward(self, x):
-        out = torch.squeeze(torch.sigmoid(self.linear(x)))
+        out = self.linear(x).squeeze()
         return out

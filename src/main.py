@@ -1,4 +1,4 @@
-from data import A9ADataset
+from data import A9ADataset, ClientDataset
 from model import LogisticRegression
 from utils import (split_data, 
                    standard_newton, 
@@ -26,7 +26,7 @@ n_clients = 80
 rho = 0.1
 LAMBDA = 1e-3
 
-criterion = torch.nn.BCELoss()
+criterion = torch.nn.BCEWithLogitsLoss()
 
 # set up the topology
 topology = Topolgy()
@@ -36,23 +36,24 @@ neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
 nodes_degrees = torch.sum(neighbour_set, axis=1)
 
 model = LogisticRegression(123, 1)
-clients_models = [deepcopy(model) for _ in range(k)]
-clients_prev_model = [deepcopy(model) for _ in range(k)]
+clients_models = [deepcopy(model) for _ in range(n_clients)]
+clients_prev_model = [deepcopy(model) for _ in range(n_clients)]
 
 d = torch.randn_like(model.linear.weight.data)
-clients_d = [deepcopy(d) for _ in range(k)]
+clients_d = [deepcopy(d) for _ in range(n_clients)]
 
 prev_d = torch.randn_like(model.linear.weight.data)
-clients_prev_d = [deepcopy(prev_d) for _ in range(k)]
+clients_prev_d = [deepcopy(prev_d) for _ in range(n_clients)]
 
 dual = torch.randn_like(model.linear.weight.data)
-clients_dual = [deepcopy(dual) for _ in range(k)]
+clients_dual = [deepcopy(dual) for _ in range(n_clients)]
 
 dataset = A9ADataset('data/LibSVM/a9a/a9a')
-loaded_data = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
-import pdb; pdb.set_trace()
-best_model = standard_newton(1, loaded_data, model, criterion, 1e-3, 1e-3)
-f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
+loaded_data = DataLoader(dataset, batch_size=32 ,shuffle=True, drop_last=True)
+# import pdb; pdb.set_trace()
+# best_model = standard_newton(1, loaded_data, model, criterion, 1e-3, 1e-3)
+# f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
+f_min = 0.2
 log.info("The minimum value of the loss function is {}".format(f_min))
 
 for i in tqdm(range(k)):
@@ -69,12 +70,13 @@ for i in tqdm(range(k)):
     temp_model = [0] * n_clients
 
     for j in range(n_clients):
-
+        import pdb; pdb.set_trace()
         start, end = split_data(dataset, n_clients, j)
         # import pdb; pdb.set_trace()
-        #client_loader = DataLoader(dataset[start:end], batch_size=32, collate_fn=collate_fn, shuffle=True, drop_last=True)
+        client_dataset = ClientDataset(dataset[start:end])
+        client_loader = DataLoader(client_dataset, batch_size=32, drop_last=True)
 
-        m, lambda_, direction = DIN(loaded_data,
+        m, lambda_, direction = DIN(client_loader,
                                     clients_prev_model[j],
                                     clients_models[j],
                                     clients_dual[j],
@@ -90,7 +92,7 @@ for i in tqdm(range(k)):
         temp[j] = direction
         temp_model[j] = m
         clients_dual[j] = lambda_
-
+        # import pdb; pdb.set_trace()
     clients_prev_d = clients_d
     clients_d = temp
 
@@ -105,7 +107,7 @@ for i in tqdm(range(k)):
     avg_models = LogisticRegression(123, 1)
     avg_models.linear.weight.data = avg_wights
 
-    f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3)
+    f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3, k=i)
     optimality_gap =  f_avg - f_min
     gaps.append(optimality_gap.item())
     log.info("optimality gap is {}".format(optimality_gap))

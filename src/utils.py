@@ -41,11 +41,13 @@ def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
     return model
 
 # the value of the loss function
-def loss_function(model, loader, criterion, LAMBDA):
+def loss_function(model, loader, criterion, LAMBDA, k=None):
     total_loss = 0
     for i, (data, target) in enumerate(loader):
+        if k == 13: 
+            import pdb; pdb.set_trace()
         y_hat = model(data)
-        target[target == -1] = 0
+        target[target < 0] = 0
         loss = criterion(y_hat, target.to(torch.float32))
         total_loss += loss
     total_loss += LAMBDA * torch.norm(model.linear.weight.data) ** 2
@@ -59,18 +61,22 @@ def split_data(data, n_clients, client_index):
     n_instances = len(data)
     n_instances_per_client = n_instances // n_clients
     if client_index == n_clients - 1:
-        return data[client_index * n_instances_per_client:]
+        return client_index * n_instances_per_client, n_instances
     return client_index * n_instances_per_client, (client_index + 1) * n_instances_per_client
 
 def collate_fn(data):
     '''
     collate function for the dataloader
     '''
-    features, labels = zip(*data)
-    batch_features = torch.stack(features)
-    batch_labels = torch.stack(labels)
-    return batch_features, batch_labels
+    # data is a list of tuples of (feature, label) tensors
+    # filtering out empty tensors
+    data = list(filter(lambda x: x[0].shape[0] > 0, data))
+    features = torch.stack([item[0] for item in data], dim=0)  # Stack all the features into one big tensor
+    labels = torch.stack([item[1] for item in data], dim= 0)    # Stack all the labels into one big tensor
 
+    return features, labels
+
+from copy import deepcopy
 def DIN(client_loader,
         prev_client_model,
         cur_client_model,
@@ -91,9 +97,10 @@ def DIN(client_loader,
     h_alpha = h + (2 * rho* degree) * torch.eye(cur_client_model.linear.weight.data.shape[0])
     h_alpha_inv = torch.inverse(h_alpha)
 
-    client_d = (h_alpha_inv @ (g - dual + (rho * (degree * client_prev_d) + prev_ds)).T).T
-    dual = dual + rho * (degree * client_d - cur_ds)
-    cur_client_model.linear.weight.data = prev_client_model.linear.weight.data - client_d
+    temp_model = deepcopy(cur_client_model)
+    d = (h_alpha_inv @ (g - dual + (rho * (degree * client_prev_d) + prev_ds)).T).T
+    dual_var = dual + rho * (degree * d - cur_ds)
+    temp_model.linear.weight.data = prev_client_model.linear.weight.data - client_d
 
-    return cur_client_model, dual, client_d
+    return temp_model, dual_var, d
 

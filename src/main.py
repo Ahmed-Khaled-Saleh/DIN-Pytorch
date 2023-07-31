@@ -23,10 +23,10 @@ torch.manual_seed(42)
 
 k = 200
 n_clients = 80
-rho = 0.1
+rho = 0.01
 LAMBDA = 1e-3
 
-criterion = torch.nn.BCEWithLogitsLoss()
+criterion = torch.nn.BCELoss()
 
 # set up the topology
 topology = Topolgy()
@@ -36,17 +36,16 @@ neighbour_set = torch.tensor(neighbour_set, dtype=torch.float32)
 nodes_degrees = torch.sum(neighbour_set, axis=1)
 
 model = LogisticRegression(123, 1)
-clients_models = [deepcopy(model) for _ in range(n_clients)]
-clients_prev_model = [deepcopy(model) for _ in range(n_clients)]
+clients_models = [LogisticRegression(123, 1) for _ in range(n_clients)]
 
 d = torch.randn_like(model.linear.weight.data)
-clients_d = [deepcopy(d) for _ in range(n_clients)]
+clients_d = [torch.randn_like(model.linear.weight.data) for _ in range(n_clients)]
 
 prev_d = torch.randn_like(model.linear.weight.data)
-clients_prev_d = [deepcopy(prev_d) for _ in range(n_clients)]
+clients_prev_d = [torch.randn_like(model.linear.weight.data) for _ in range(n_clients)]
 
 dual = torch.randn_like(model.linear.weight.data)
-clients_dual = [deepcopy(dual) for _ in range(n_clients)]
+clients_dual = [torch.randn_like(model.linear.weight.data) for _ in range(n_clients)]
 
 dataset = A9ADataset('data/LibSVM/a9a/a9a')
 loaded_data = DataLoader(dataset, batch_size=32 ,shuffle=True, drop_last=True)
@@ -56,28 +55,32 @@ loaded_data = DataLoader(dataset, batch_size=32 ,shuffle=True, drop_last=True)
 f_min = 0.2
 log.info("The minimum value of the loss function is {}".format(f_min))
 
+gaps = []
 for i in tqdm(range(k)):
 
     all_ds = []
     all_prev_ds = []
     for j in range(n_clients):
-        ds = torch.sum(clients_d[j], axis= 0)
-        prev_ds = torch.sum(clients_prev_d[j], axis= 0)
+        ds = torch.zeros_like(model.linear.weight.data)
+        prev_ds = torch.zeros_like(model.linear.weight.data)
+        for index, n in enumerate(neighbour_set[j]):
+            if n != 0:
+                ds += clients_d[index]
+                prev_ds += clients_prev_d[index]
         all_ds.append(ds)
         all_prev_ds.append(prev_ds)
-        
+    
     temp = [0] * n_clients
     temp_model = [0] * n_clients
 
     for j in range(n_clients):
-        import pdb; pdb.set_trace()
+
         start, end = split_data(dataset, n_clients, j)
-        # import pdb; pdb.set_trace()
+
         client_dataset = ClientDataset(dataset[start:end])
-        client_loader = DataLoader(client_dataset, batch_size=32, drop_last=True)
+        client_loader = DataLoader(client_dataset, batch_size=32)
 
         m, lambda_, direction = DIN(client_loader,
-                                    clients_prev_model[j],
                                     clients_models[j],
                                     clients_dual[j],
                                     clients_d[j],
@@ -88,7 +91,7 @@ for i in tqdm(range(k)):
                                     criterion,
                                     LAMBDA,
                                     rho)
-
+        
         temp[j] = direction
         temp_model[j] = m
         clients_dual[j] = lambda_
@@ -96,18 +99,16 @@ for i in tqdm(range(k)):
     clients_prev_d = clients_d
     clients_d = temp
 
-    clients_prev_model = clients_models
     clients_models = temp_model
 
     # compute the optimality gap and append to the list
     # import pdb; pdb.set_trace()
-    gaps = []
-
+    
     avg_wights = torch.stack([item.linear.weight.data for item in clients_models]).mean(axis=0)
     avg_models = LogisticRegression(123, 1)
     avg_models.linear.weight.data = avg_wights
 
-    f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3, k=i)
+    f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3)
     optimality_gap =  f_avg - f_min
     gaps.append(optimality_gap.item())
     log.info("optimality gap is {}".format(optimality_gap))

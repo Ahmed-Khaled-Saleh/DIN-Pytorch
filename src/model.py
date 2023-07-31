@@ -8,6 +8,8 @@ class LogisticRegression(nn.Module):
         super(LogisticRegression, self).__init__()
         self.linear = nn.Linear(input_size, num_classes, bias= False)
 
-    def forward(self, x):
-        out = self.linear(x).squeeze()
+    def forward(self, x, loss_ = None):
+        x = self.linear(x)
+        x = torch.clamp(x, -10, 10)
+        out = torch.squeeze(torch.sigmoid(x))
         return out

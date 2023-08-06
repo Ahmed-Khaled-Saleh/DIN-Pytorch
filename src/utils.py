@@ -13,7 +13,7 @@ def gradient_by_hand(loader, model, criterion, LAMBDA, k = None):
     all_data = torch.tensor([])
     all_targets = torch.tensor([])
     all_y_hat = torch.tensor([])
-    model.to(device)
+    model = model.to(device)
     for i, (data, target) in enumerate(loader):
         data = (data - data.mean()) / data.std()
         # if k == 20: import pdb;pdb.set_trace()
@@ -45,7 +45,7 @@ def hessian_by_hand(loader, model, LAMBDA):
     all_data = torch.tensor([])
     all_targets = torch.tensor([])
     all_y_hat = torch.tensor([])
-    model.to(device)
+    model = model.to(device)
     for i, (data, target) in enumerate(loader):
         data = (data - data.mean()) / data.std()
         y_hat = model(data)

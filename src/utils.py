@@ -6,21 +6,17 @@ from torch.utils.data import DataLoader
 from data import ClientDataset
 from model import LogisticRegression
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def gradient_by_hand(loader, model, criterion, LAMBDA, k = None):
-    total_grad = torch.zeros_like(model.linear.weight).to(device)
-    all_data = torch.tensor([]).to(device)
-    all_targets = torch.tensor([]).to(device)
-    all_y_hat = torch.tensor([]).to(device)
-    model = model.to(device)
+    total_grad = torch.zeros_like(model.linear.weight)
+    all_data = torch.tensor([])
+    all_targets = torch.tensor([])
+    all_y_hat = torch.tensor([])
     for i, (data, target) in enumerate(loader):
         data = (data - data.mean()) / data.std()
         # if k == 20: import pdb;pdb.set_trace()
-        data = data.to(device)
         target[target < 0] = 0
-        target = target.to(torch.float32).to(device)
-        
+        target = target.to(torch.float32)
         y_hat = model(data)
 
         all_data = torch.cat((all_data, data))
@@ -41,15 +37,14 @@ def gradient_by_hand(loader, model, criterion, LAMBDA, k = None):
     return total_grad
 
 def hessian_by_hand(loader, model, LAMBDA):
-    hessian = torch.zeros((model.linear.weight.data.shape[1], model.linear.weight.data.shape[1])).to(device)
-    all_data = torch.tensor([]).to(device)
-    all_targets = torch.tensor([]).to(device)
-    all_y_hat = torch.tensor([]).to(device)
-    model = model.to(device)
+    hessian = torch.zeros((model.linear.weight.data.shape[1], model.linear.weight.data.shape[1]))
+    all_data = torch.tensor([])
+    all_targets = torch.tensor([])
+    all_y_hat = torch.tensor([])
+
     for i, (data, target) in enumerate(loader):
         data = (data - data.mean()) / data.std()
         y_hat = model(data)
-        data = data.to(device)
         # S = torch.diag(y_hat * (1-y_hat))
         # h = torch.matmul(torch.matmul(data.T, S), data)
         # hessian += h

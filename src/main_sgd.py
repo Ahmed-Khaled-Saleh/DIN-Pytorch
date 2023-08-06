@@ -41,7 +41,7 @@ clients_models = [LogisticRegression(123, 1) for _ in range(n_clients)]
 
 dataset = A9ADataset('data/LibSVM/a9a/a9a')
 loaded_data = DataLoader(dataset, batch_size=32 ,shuffle=True, drop_last=True)
-
+torch.autograd.set_detect_anomaly(True)
 best_model = standard_newton(100, loaded_data, model, criterion, 1e-3, 1e-3)
 f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
 # f_min = 31

@@ -61,7 +61,7 @@ def hessian_by_hand(loader, model, LAMBDA):
 def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
     #import pdb; pdb.set_trace()
     x = model.linear.weight.data
-    log.info("Running standard newton method")
+    #log.info("Running standard newton method")
     for i in tqdm(range(n_epochs)):
         g = gradient_by_hand(loader, model, criterion, LAMBDA, i)
         h = hessian_by_hand(loader, model, LAMBDA)
@@ -73,7 +73,7 @@ def standard_newton(n_epochs, loader, model, criterion, LAMBDA, eps):
         if torch.all(torch.abs(x_new - x) < eps):
             break
         if torch.norm(g) ** 2 < eps:
-            log.info("Converged because gradient norm is less than {}".format(eps))
+            #log.info("Converged because gradient norm is less than {}".format(eps))
             break
 
         x = x_new
@@ -179,7 +179,7 @@ def DIN(dataset,
             
         for i in range(n_clients):
             lambda_[i] = lambda_[i] + rho * (degree[i] * d[i] - sum([neighbour_set[i][l] * d[l] for l in range(n_clients)]))
-            x[i].linear.weight.data = x[i].linear.weight.data - d[i]
+            x[i].linear.weight.data -=  d[i]
         
         prev_d = d
 

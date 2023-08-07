@@ -43,7 +43,7 @@ loaded_data = DataLoader(dataset, batch_size=32 ,shuffle=True, drop_last=True)
 # best_model = standard_newton(1, loaded_data, model, criterion, 1e-3, 1e-3)
 # f_min = loss_function(best_model, loaded_data, criterion, 1e-3)
 f_min = 0.2
-log.info("The minimum value of the loss function is {}".format(f_min))
+###log.info("The minimum value of the loss function is {}".format(f_min))
 
 gaps = []
 
@@ -59,7 +59,7 @@ avg_models.linear.weight.data = avg_wights
 f_avg = loss_function(avg_models, loaded_data, criterion, 1e-3)
 optimality_gap =  f_avg - f_min
 gaps.append(optimality_gap.item())
-log.info("optimality gap is {}".format(optimality_gap))
+#log.info("optimality gap is {}".format(optimality_gap))
 
 # plot the optimality gap vs iteration
 plt.plot(gaps)
